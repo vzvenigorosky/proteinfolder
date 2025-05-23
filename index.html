@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protein Folding Enzyme Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* justify-content: center; */ /* Allow scrolling for scoreboard */
+            min-height: 100vh;
+            background-color: #f3f4f6; 
+            margin: 0;
+            padding: 1rem;
+        }
+        .container {
+            background-color: white;
+            padding: 1.5rem; 
+            border-radius: 0.5rem; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+            width: 100%;
+            max-width: 700px; 
+            margin-bottom: 2rem; /* Space for scoreboard */
+        }
+        #simulationCanvas {
+            border: 1px solid #d1d5db; 
+            border-radius: 0.375rem; 
+            margin-top: 1rem;
+            background-color: #f9fafb; 
+        }
+        .info-text {
+            font-size: 0.875rem; 
+            color: #4b5563; 
+            margin-top: 0.5rem;
+        }
+        .status-box {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background-color: #e5e7eb; 
+            border-radius: 0.375rem; 
+            font-size: 0.875rem; 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
+            gap: 0.5rem;
+        }
+        .status-item {
+             white-space: nowrap; 
+        }
+        .message-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); display: flex;
+            justify-content: center; align-items: center; z-index: 1000;
+        }
+        .message-box {
+            background-color: white; padding: 20px; border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2); text-align: center; max-width: 300px;
+        }
+        .message-box button { margin-top: 15px; padding: 8px 15px; }
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .scoreboard-container {
+            width: 100%;
+            max-width: 700px;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container">
+        <h1 class="text-2xl font-bold text-center text-gray-700 mb-6">Enzyme Reaction Simulator</h1>
+
+        <div class="mb-4">
+            <label for="sequenceInput" class="block text-sm font-medium text-gray-700 mb-1">Amino Acid Sequence (P, N, O, F, R):</label>
+            <input type="text" id="sequenceInput" value="PFOROFNOP"
+                   class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+        </div>
+        <div class="input-grid">
+            <div>
+                <label for="initialCInput" class="block text-sm font-medium text-gray-700 mb-1">Initial Substrate (C) Count:</label>
+                <input type="number" id="initialCInput" value="10" min="1"
+                       class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="targetSInput" class="block text-sm font-medium text-gray-700 mb-1">Target Product (S) Count:</label>
+                <input type="number" id="targetSInput" value="5" min="1"
+                       class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+        </div>
+         <p class="info-text mb-4">R: Reactive (active if between a stuck P-N pair). F: Fixed. P-N stick. P-P/N-N repel. Reaction linearizes protein.</p>
+
+
+        <div class="button-grid">
+            <button id="foldButton"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                Start Folding
+            </button>
+            <button id="resetButton"
+                    class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition duration-150 ease-in-out">
+                Reset
+            </button>
+        </div>
+        
+        <div class="status-box">
+            <div class="status-item">Score: <span id="scoreDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Best: <span id="bestScoreDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Stuck: <span id="stuckPairsDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Substrate (C): <span id="substrateCountDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Product (S): <span id="productCountDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Steps: <span id="stepsDisplay" class="font-semibold">0</span></div>
+            <div class="status-item">Frames: <span id="framesDisplay" class="font-semibold">0</span></div>
+        </div>
+
+        <canvas id="simulationCanvas" width="660" height="450"></canvas>
+         <p class="info-text text-center mt-2">P(+):Blue, N(-):Red, O:Grey, F(Fixed):Black, R(Reactive):Purple (Active:Orange). Substrate(C):Yellow, Product(S):Green.</p>
+    </div>
+
+    <div class="scoreboard-container">
+        <h2 class="text-xl font-semibold text-gray-700 mb-2 text-center">Scoreboard</h2>
+        <div class="overflow-x-auto bg-white rounded-md shadow">
+            <table id="scoreboardTable" class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sequence</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Initial C</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target S</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S Created</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frames</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Goal Met</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="scoreboardBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+        const sequenceInput = document.getElementById('sequenceInput');
+        const initialCInput = document.getElementById('initialCInput');
+        const targetSInput = document.getElementById('targetSInput');
+        const foldButton = document.getElementById('foldButton');
+        const resetButton = document.getElementById('resetButton');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const bestScoreDisplay = document.getElementById('bestScoreDisplay');
+        const stuckPairsDisplay = document.getElementById('stuckPairsDisplay');
+        const substrateCountDisplay = document.getElementById('substrateCountDisplay');
+        const productCountDisplay = document.getElementById('productCountDisplay');
+        const stepsDisplay = document.getElementById('stepsDisplay');
+        const framesDisplay = document.getElementById('framesDisplay'); 
+        const scoreboardBody = document.getElementById('scoreboardBody');
+
+        // --- Simulation Parameters ---
+        const GRID_SIZE = 20; 
+        const AA_RADIUS = GRID_SIZE / 2 - 2;
+        const COMPOUND_RADIUS = GRID_SIZE / 3;
+        const ATTRACTION_SCORE = 10; 
+        const LIKE_REPULSION_PENALTY = 10; 
+        const MAX_ATTEMPTS_PER_FRAME = 50; 
+        const EXPLORATION_CHANCE = 0.05; 
+        const DEFAULT_INITIAL_SUBSTRATE_COUNT = 10;
+        const DEFAULT_TARGET_PRODUCT_COUNT = 5;
+        const REACTION_DISTANCE = GRID_SIZE * 0.8; 
+        const COMPOUND_MAX_SPEED = 2;
+
+        // --- Simulation State ---
+        let aminoAcids = [];
+        let bestAminoAcidsConfiguration = [];
+        let stuckPairs = []; 
+        let bestStuckPairsConfiguration = [];
+        let compoundsC = []; 
+        let compoundsS = []; 
+        let nextCompoundId = 0;
+
+        let currentScore = 0;
+        let highestScoreAchieved = 0; 
+        let simulationRunning = false;
+        let animationFrameId = null;
+        let totalStepsTaken = 0; 
+        let totalFramesProcessed = 0; 
+        let lastInitializedSequence = ""; 
+        let scoreboardData = [];
+        let activeRunParams = { initialC: DEFAULT_INITIAL_SUBSTRATE_COUNT, targetS: DEFAULT_TARGET_PRODUCT_COUNT };
+
+
+        // --- Custom Message Box ---
+        function showMessage(message) {
+            const existingOverlay = document.querySelector('.message-overlay');
+            if (existingOverlay) existingOverlay.remove();
+            const overlay = document.createElement('div');
+            overlay.className = 'message-overlay';
+            const box = document.createElement('div');
+            box.className = 'message-box';
+            const text = document.createElement('p');
+            text.textContent = message;
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'OK';
+            closeButton.className = 'bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md';
+            closeButton.onclick = () => overlay.remove();
+            box.appendChild(text);
+            box.appendChild(closeButton);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+        }
+
+        // --- Helper: Deep Copy ---
+        function deepCopy(original) { 
+            return JSON.parse(JSON.stringify(original));
+        }
+        
+        // --- Helper: Linearize Protein Chain ---
+        function linearizeProteinChain() {
+            if (aminoAcids.length === 0) return;
+            
+            let startY_candidate = canvas.height / 3; // Default
+            if (aminoAcids[0] && typeof aminoAcids[0].y === 'number') {
+                startY_candidate = aminoAcids[0].y;
+            }
+            const finalStartY = Math.max(AA_RADIUS, Math.min(canvas.height - AA_RADIUS, startY_candidate));
+
+            const chainTotalWidth = aminoAcids.length * GRID_SIZE;
+            let startX = (canvas.width - chainTotalWidth) / 2 + GRID_SIZE / 2;
+            startX = Math.max(startX, GRID_SIZE / 2);
+
+            aminoAcids.forEach((aa, i) => {
+                if (aa) { 
+                    aa.x = startX + i * GRID_SIZE;
+                    aa.y = finalStartY; 
+                    if (aa.type === 'R') aa.isActive = false; 
+                }
+            });
+        }
+
+
+        // --- Initialization ---
+        function initializeChain() {
+            const currentSequence = sequenceInput.value.toUpperCase();
+            if (currentSequence.length < 3 || !/^[PNOFR]+$/.test(currentSequence)) { 
+                showMessage("Invalid sequence. Please use P, N, O, F, R and at least 3 amino acids.");
+                lastInitializedSequence = ""; 
+                aminoAcids = []; stuckPairs = []; compoundsC = []; compoundsS = [];
+                return false;
+            }
+            aminoAcids = [];
+            stuckPairs = []; 
+            compoundsC = [];
+            compoundsS = [];
+            nextCompoundId = 0;
+            
+            activeRunParams.initialC = parseInt(initialCInput.value) || DEFAULT_INITIAL_SUBSTRATE_COUNT;
+            activeRunParams.targetS = parseInt(targetSInput.value) || DEFAULT_TARGET_PRODUCT_COUNT;
+            initialCInput.value = activeRunParams.initialC; // Ensure input reflects actual value used
+            targetSInput.value = activeRunParams.targetS;
+
+            for (let i = 0; i < currentSequence.length; i++) {
+                aminoAcids.push({ type: currentSequence[i], id: i, isActive: false }); 
+            }
+            linearizeProteinChain(); 
+            
+            for (let i = 0; i < activeRunParams.initialC; i++) {
+                compoundsC.push({
+                    id: nextCompoundId++,
+                    x: Math.random() * (canvas.width - COMPOUND_RADIUS * 2) + COMPOUND_RADIUS,
+                    y: Math.random() * (canvas.height - COMPOUND_RADIUS * 2) + COMPOUND_RADIUS,
+                    vx: (Math.random() - 0.5) * COMPOUND_MAX_SPEED * 2,
+                    vy: (Math.random() - 0.5) * COMPOUND_MAX_SPEED * 2
+                });
+            }
+
+            currentScore = calculateScore(aminoAcids);
+            highestScoreAchieved = currentScore;
+            bestAminoAcidsConfiguration = deepCopy(aminoAcids);
+            bestStuckPairsConfiguration = deepCopy(stuckPairs); 
+            
+            totalStepsTaken = 0;
+            totalFramesProcessed = 0;
+            lastInitializedSequence = currentSequence; 
+            
+            updateButtonStates();
+            updateDisplays();
+            return true;
+        }
+
+        // --- Drawing ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (aminoAcids.length === 0 && compoundsC.length === 0 && compoundsS.length === 0) return;
+            
+            if (aminoAcids.length > 0) {
+                ctx.beginPath();
+                if (aminoAcids[0]) ctx.moveTo(aminoAcids[0].x, aminoAcids[0].y);
+                for (let i = 1; i < aminoAcids.length; i++) {
+                    if (aminoAcids[i]) ctx.lineTo(aminoAcids[i].x, aminoAcids[i].y);
+                }
+                ctx.strokeStyle = "#9ca3af"; ctx.lineWidth = 2; ctx.stroke();
+
+                aminoAcids.forEach(aa => {
+                    if (!aa) return; 
+                    let aaColor = '';
+                    switch (aa.type) {
+                        case 'P': aaColor = '#3b82f6'; break; 
+                        case 'N': aaColor = '#ef4444'; break; 
+                        case 'O': aaColor = '#6b7280'; break; 
+                        case 'F': aaColor = '#1f2937'; break; 
+                        case 'R': 
+                            aaColor = aa.isActive ? '#f97316' : '#8b5cf6'; 
+                            break; 
+                        default: aaColor = 'black';
+                    }
+                    ctx.fillStyle = aaColor;
+                    ctx.beginPath();
+                    ctx.arc(aa.x, aa.y, AA_RADIUS, 0, Math.PI * 2); 
+                    ctx.fill();
+                    ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 1; ctx.stroke();
+                    
+                    let symbol = '';
+                    switch(aa.type) {
+                        case 'P': symbol = '+'; break;
+                        case 'N': symbol = '-'; break;
+                        case 'F': symbol = 'F'; break; 
+                        case 'R': symbol = 'R'; break; 
+                    }
+                    if (symbol) {
+                        ctx.fillStyle = 'white';
+                        ctx.font = `${AA_RADIUS}px Arial`; 
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText(symbol, aa.x, aa.y + 1);
+                    }
+                });
+            }
+
+            ctx.fillStyle = '#facc15'; 
+            compoundsC.forEach(c => {
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, COMPOUND_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.fillStyle = '#22c55e'; 
+            compoundsS.forEach(s => {
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, COMPOUND_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // --- Scoring Logic (Protein Folding Score) ---
+        function calculateScore(chain) {
+            let score = 0;
+            if (!chain || chain.length < 2) return 0;
+            for (let i = 0; i < chain.length; i++) {
+                if (!chain[i]) continue;
+                for (let j = i + 1; j < chain.length; j++) {
+                    if (!chain[j]) continue;
+                    if (Math.abs(i - j) > 1) { 
+                        if (areAdjacent(chain[i], chain[j], GRID_SIZE)) {
+                            if ((chain[i].type === 'P' && chain[j].type === 'N') ||
+                                (chain[i].type === 'N' && chain[j].type === 'P')) {
+                                score += ATTRACTION_SCORE;
+                            } 
+                            else if (
+                                (chain[i].type === 'P' && chain[j].type === 'P') ||
+                                (chain[i].type === 'N' && chain[j].type === 'N')
+                            ) {
+                                score -= LIKE_REPULSION_PENALTY;
+                            }
+                        }
+                    }
+                }
+            }
+            return score;
+        }
+        
+        function updateDisplays() {
+            scoreDisplay.textContent = currentScore;
+            bestScoreDisplay.textContent = highestScoreAchieved;
+            stuckPairsDisplay.textContent = stuckPairs.length; 
+            substrateCountDisplay.textContent = compoundsC.length;
+            productCountDisplay.textContent = compoundsS.length;
+            stepsDisplay.textContent = totalStepsTaken;
+            framesDisplay.textContent = totalFramesProcessed;
+        }
+
+        // --- Helper Functions ---
+        function areAdjacent(item1, item2, distance) { 
+            if (!item1 || !item2) return false;
+            const dx = Math.abs(item1.x - item2.x);
+            const dy = Math.abs(item1.y - item2.y);
+            const distSq = dx * dx + dy * dy;
+            if (distance === GRID_SIZE) { 
+                 return (dx === distance && dy === 0) || (dx === 0 && dy === distance) || (dx === distance && dy === distance);
+            } else { 
+                 return distSq <= distance * distance;
+            }
+        }
+
+        function isOccupied(x, y, excludeId) { 
+            for (const aa of aminoAcids) { 
+                if (aa.id !== excludeId && aa.x === x && aa.y === y) return true;
+            }
+            return false;
+        }
+
+        // --- Update Stuck Pairs ---
+        function updateStuckPairs() {
+            for (let i = 0; i < aminoAcids.length; i++) {
+                const aa1 = aminoAcids[i];
+                if (!aa1 || (aa1.type !== 'P' && aa1.type !== 'N')) continue;
+                for (let j = 0; j < aminoAcids.length; j++) { 
+                    if (i === j) continue;
+                    const aa2 = aminoAcids[j];
+                    if (!aa2 || !((aa1.type === 'P' && aa2.type === 'N') || (aa1.type === 'N' && aa2.type === 'P'))) continue;
+                    if (Math.abs(aa1.id - aa2.id) > 1) { 
+                        if (areAdjacent(aa1, aa2, GRID_SIZE)) {
+                            const id1 = Math.min(aa1.id, aa2.id); 
+                            const id2 = Math.max(aa1.id, aa2.id);
+                            const isAlreadyStuck = stuckPairs.some(pair => pair.id1 === id1 && pair.id2 === id2);
+                            if (!isAlreadyStuck) stuckPairs.push({ id1: id1, id2: id2 });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // --- Find Stuck Cluster ---
+        function findStuckCluster(startId) { 
+            const cluster = new Set();
+            const queue = [startId];
+            const visited = new Set(); 
+            while (queue.length > 0) {
+                const currentId = queue.shift();
+                if (visited.has(currentId)) continue;
+                visited.add(currentId);
+                cluster.add(currentId);
+                stuckPairs.forEach(pair => {
+                    let partnerId = -1;
+                    if (pair.id1 === currentId) partnerId = pair.id2;
+                    else if (pair.id2 === currentId) partnerId = pair.id1;
+                    if (partnerId !== -1 && !visited.has(partnerId)) queue.push(partnerId);
+                });
+            }
+            return cluster;
+        }
+
+        // --- R in Loop Detection ---
+        function isRInLoop(rAA_target) {
+            if (!rAA_target || rAA_target.type !== 'R' || aminoAcids.length < 3) return false;
+            const rIndex = aminoAcids.findIndex(aa => aa.id === rAA_target.id);
+            for (const pair of stuckPairs) {
+                const aa1_from_pair = aminoAcids.find(aa => aa.id === pair.id1);
+                const aa2_from_pair = aminoAcids.find(aa => aa.id === pair.id2);
+                if (!aa1_from_pair || !aa2_from_pair) continue;
+                const isPNPair = (aa1_from_pair.type === 'P' && aa2_from_pair.type === 'N') || 
+                                 (aa1_from_pair.type === 'N' && aa2_from_pair.type === 'P');
+                if (!isPNPair) continue;
+                const index1 = aminoAcids.findIndex(aa => aa.id === aa1_from_pair.id);
+                const index2 = aminoAcids.findIndex(aa => aa.id === aa2_from_pair.id);
+                if (Math.abs(index1 - index2) > 1) { 
+                    const minIndex = Math.min(index1, index2);
+                    const maxIndex = Math.max(index1, index2);
+                    if (rIndex > minIndex && rIndex < maxIndex) return true; 
+                }
+            }
+            return false;
+        }
+
+        // --- Move Compounds ---
+        function moveCompounds() {
+            [compoundsC, compoundsS].forEach(compoundArray => {
+                compoundArray.forEach(c => {
+                    c.x += c.vx; c.y += c.vy;
+                    if (c.x - COMPOUND_RADIUS < 0 || c.x + COMPOUND_RADIUS > canvas.width) c.vx *= -1;
+                    if (c.y - COMPOUND_RADIUS < 0 || c.y + COMPOUND_RADIUS > canvas.height) c.vy *= -1;
+                    c.x = Math.max(COMPOUND_RADIUS, Math.min(canvas.width - COMPOUND_RADIUS, c.x));
+                    c.y = Math.max(COMPOUND_RADIUS, Math.min(canvas.height - COMPOUND_RADIUS, c.y));
+                });
+            });
+        }
+        
+        // --- Handle Reaction ---
+        function handleReactions() {
+            let reactionOccurredThisFrame = false;
+            for (const rAA of aminoAcids) {
+                if (rAA.type === 'R' && rAA.isActive) { 
+                    for (let i = compoundsC.length - 1; i >= 0; i--) {
+                        const c = compoundsC[i];
+                        if (areAdjacent(rAA, c, REACTION_DISTANCE)) { 
+                            compoundsS.push({ 
+                                id: nextCompoundId++, x: c.x, y: c.y,
+                                vx: (Math.random() - 0.5) * COMPOUND_MAX_SPEED * 2,
+                                vy: (Math.random() - 0.5) * COMPOUND_MAX_SPEED * 2
+                            });
+                            compoundsC.splice(i, 1); 
+                            stuckPairs = []; 
+                            linearizeProteinChain(); 
+                            currentScore = calculateScore(aminoAcids); 
+                            reactionOccurredThisFrame = true;
+                            break; 
+                        }
+                    }
+                }
+                if (reactionOccurredThisFrame && !simulationRunning) break; 
+                if (reactionOccurredThisFrame) break; 
+            }
+            return reactionOccurredThisFrame;
+        }
+
+        // --- Folding Algorithm Step (Protein Movement) ---
+        function attemptProteinMoveStep() {
+            if (aminoAcids.length < 2) return { moved: false, newScore: currentScore };
+            const nonFixedAminoAcids = aminoAcids.filter(aa => aa.type !== 'F');
+            if (nonFixedAminoAcids.length === 0) return { moved: false, newScore: currentScore };
+            const aaIndexInNonFixed = Math.floor(Math.random() * nonFixedAminoAcids.length);
+            const selectedAA = nonFixedAminoAcids[aaIndexInNonFixed]; 
+            const clusterIds = findStuckCluster(selectedAA.id);
+            let clusterIsFixedByF_Type = false;
+            for (const id of clusterIds) {
+                const aaInCluster = aminoAcids.find(a => a.id === id);
+                if (aaInCluster && aaInCluster.type === 'F') { clusterIsFixedByF_Type = true; break; }
+            }
+            if (clusterIsFixedByF_Type) return { moved: false, newScore: currentScore };
+            const potentialMoves = [
+                { dx: 0, dy: -GRID_SIZE }, { dx: 0, dy: GRID_SIZE }, { dx: -GRID_SIZE, dy: 0 }, { dx: GRID_SIZE, dy: 0 },
+                { dx: -GRID_SIZE, dy: -GRID_SIZE }, { dx: -GRID_SIZE, dy: GRID_SIZE }, { dx: GRID_SIZE, dy: -GRID_SIZE }, { dx: GRID_SIZE, dy: GRID_SIZE }
+            ];
+            potentialMoves.sort(() => Math.random() - 0.5);
+            for (const move of potentialMoves) {
+                const dx = move.dx; const dy = move.dy;
+                let canMoveCluster = true; const proposedClusterPositions = {};
+                for (const id of clusterIds) {
+                    const aa = aminoAcids.find(a => a.id === id);
+                    if (!aa) { canMoveCluster = false; break; } 
+                    const newX = aa.x + dx; const newY = aa.y + dy;
+                    if (newX < AA_RADIUS || newX >= canvas.width - AA_RADIUS || newY < AA_RADIUS || newY >= canvas.height - AA_RADIUS) { canMoveCluster = false; break; }
+                    proposedClusterPositions[id] = { x: newX, y: newY };
+                }
+                if (!canMoveCluster) continue;
+                for (const id of clusterIds) {
+                    const newPos = proposedClusterPositions[id];
+                    for (const otherAA of aminoAcids) {
+                        if (!clusterIds.has(otherAA.id)) { if (otherAA.x === newPos.x && otherAA.y === newPos.y) { canMoveCluster = false; break; } }
+                    }
+                    if (!canMoveCluster) break;
+                }
+                if (!canMoveCluster) continue;
+                for (const id of clusterIds) {
+                    const aaInCluster = aminoAcids.find(a => a.id === id); 
+                    const newPosOfAAInCluster = proposedClusterPositions[id];
+                    if (aaInCluster.id > 0) { 
+                        const prevAA = aminoAcids.find(a => a.id === aaInCluster.id - 1);
+                        if (prevAA && !clusterIds.has(prevAA.id)) { if (!areAdjacent(newPosOfAAInCluster, prevAA, GRID_SIZE)) { canMoveCluster = false; break; } }
+                    }
+                    if (aaInCluster.id < aminoAcids.length - 1) { 
+                        const nextAA = aminoAcids.find(a => a.id === aaInCluster.id + 1);
+                        if (nextAA && !clusterIds.has(nextAA.id)) { if (!areAdjacent(newPosOfAAInCluster, nextAA, GRID_SIZE)) { canMoveCluster = false; break; } }
+                    }
+                    if (!canMoveCluster) break;
+                }
+                if (!canMoveCluster) continue;
+                const originalClusterPositions = {};
+                clusterIds.forEach(id => {
+                    const aaToMove = aminoAcids.find(a => a.id === id);
+                    originalClusterPositions[id] = { x: aaToMove.x, y: aaToMove.y };
+                    aaToMove.x = proposedClusterPositions[id].x; aaToMove.y = proposedClusterPositions[id].y;
+                });
+                const newCalculatedScore = calculateScore(aminoAcids);
+                if (newCalculatedScore > currentScore || Math.random() < EXPLORATION_CHANCE) { return { moved: true, newScore: newCalculatedScore }; } 
+                else { clusterIds.forEach(id => { const aaToRevert = aminoAcids.find(a => a.id === id); aaToRevert.x = originalClusterPositions[id].x; aaToRevert.y = originalClusterPositions[id].y; }); }
+            }
+            return { moved: false, newScore: currentScore }; 
+        }
+
+        // --- Record Run and Display Scoreboard ---
+        function recordRun() {
+            const runData = {
+                sequence: lastInitializedSequence,
+                initialC: activeRunParams.initialC,
+                targetS: activeRunParams.targetS,
+                productsCreated: compoundsS.length,
+                framesTaken: totalFramesProcessed,
+                goalMet: compoundsS.length >= activeRunParams.targetS
+            };
+            scoreboardData.push(runData);
+            displayScoreboard();
+        }
+
+        function displayScoreboard() {
+            scoreboardData.sort((a, b) => {
+                if (a.goalMet && !b.goalMet) return -1;
+                if (!a.goalMet && b.goalMet) return 1;
+                if (a.goalMet && b.goalMet) {
+                    return a.framesTaken - b.framesTaken; // Fewer frames is better
+                }
+                // Neither met goal (or both didn't, which is the same as this path)
+                if (b.productsCreated !== a.productsCreated) {
+                    return b.productsCreated - a.productsCreated; // More products is better
+                }
+                return a.framesTaken - b.framesTaken; // Then fewer frames
+            });
+
+            scoreboardBody.innerHTML = ""; // Clear existing rows
+            scoreboardData.forEach(run => {
+                const row = scoreboardBody.insertRow();
+                row.insertCell().textContent = run.sequence;
+                row.insertCell().textContent = run.initialC;
+                row.insertCell().textContent = run.targetS;
+                row.insertCell().textContent = run.productsCreated;
+                row.insertCell().textContent = run.framesTaken;
+                row.insertCell().textContent = run.goalMet ? "Yes" : "No";
+            });
+        }
+
+
+        // --- Simulation Loop ---
+        function simulationStep() {
+            if (!simulationRunning) return;
+
+            aminoAcids.forEach(aa => { if (aa && aa.type === 'R') aa.isActive = isRInLoop(aa); });
+            moveCompounds();
+            const reactionHappened = handleReactions(); 
+            if (reactionHappened && compoundsS.length >= activeRunParams.targetS) {
+                simulationRunning = false; // Stop if goal reached after reaction
+                recordRun();
+                updateButtonStates();
+                updateDisplays(); 
+                draw();
+                showMessage(`Target of ${activeRunParams.targetS} products reached in ${totalFramesProcessed} frames!`);
+                return; // End simulation
+            }
+
+            for (let i = 0; i < MAX_ATTEMPTS_PER_FRAME; i++) {
+                const result = attemptProteinMoveStep(); 
+                if (result.moved) {
+                    currentScore = result.newScore; 
+                    updateStuckPairs(); 
+                    aminoAcids.forEach(aa => { if (aa && aa.type === 'R') aa.isActive = isRInLoop(aa); });
+                    if (currentScore > highestScoreAchieved) {
+                        highestScoreAchieved = currentScore;
+                        bestAminoAcidsConfiguration = deepCopy(aminoAcids);
+                        bestStuckPairsConfiguration = deepCopy(stuckPairs);
+                    } else if (currentScore === highestScoreAchieved && stuckPairs.length > bestStuckPairsConfiguration.length) {
+                        bestAminoAcidsConfiguration = deepCopy(aminoAcids);
+                        bestStuckPairsConfiguration = deepCopy(stuckPairs);
+                    }
+                }
+                totalStepsTaken++;
+            }
+            
+            totalFramesProcessed++;
+            updateDisplays(); 
+            draw(); 
+            
+            if (simulationRunning) { // Check again in case it was stopped by goal
+                animationFrameId = requestAnimationFrame(simulationStep);
+            }
+        }
+        
+        // --- Button States Management ---
+        function updateButtonStates() {
+            if (simulationRunning) {
+                foldButton.textContent = "Stop Folding";
+                foldButton.disabled = false;
+                resetButton.disabled = true; 
+                sequenceInput.disabled = true;
+                initialCInput.disabled = true;
+                targetSInput.disabled = true;
+            } else { 
+                foldButton.textContent = "Start Folding";
+                foldButton.disabled = false;
+                resetButton.disabled = false;
+                sequenceInput.disabled = false;
+                initialCInput.disabled = false;
+                targetSInput.disabled = false;
+            }
+        }
+
+        // --- Event Listeners ---
+        foldButton.addEventListener('click', () => {
+            const currentSeq = sequenceInput.value.toUpperCase();
+            if (simulationRunning) { 
+                simulationRunning = false;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                recordRun(); // Record run when manually stopped
+            } else { 
+                // Check if it's a truly new run or a resume
+                // A new run is if: 1. No AAs, 2. Sequence changed, 3. Previous run met goal.
+                const goalWasMetPreviously = compoundsS.length >= activeRunParams.targetS && totalFramesProcessed > 0;
+
+                if (aminoAcids.length === 0 || currentSeq !== lastInitializedSequence || goalWasMetPreviously) {
+                    if (!initializeChain()) { 
+                        draw(); updateDisplays(); updateButtonStates(); return; 
+                    }
+                }
+                // If not a new run, it's a resume: activeRunParams are still valid for current state.
+                simulationRunning = true;
+                simulationStep();
+            }
+            updateButtonStates();
+        });
+
+        resetButton.addEventListener('click', () => {
+            simulationRunning = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            // Don't record run on reset, as it's an explicit discard of current progress
+            if (!initializeChain()) { 
+                 aminoAcids = []; bestAminoAcidsConfiguration = [];
+                 stuckPairs = []; bestStuckPairsConfiguration = [];
+                 compoundsC = []; compoundsS = [];
+                 lastInitializedSequence = ""; 
+            }
+            draw(); 
+            updateButtonStates();
+            updateDisplays(); 
+        });
+
+        window.onload = () => {
+            if (!initializeChain()) { 
+                 aminoAcids = []; bestAminoAcidsConfiguration = [];
+                 stuckPairs = []; bestStuckPairsConfiguration = [];
+                 compoundsC = []; compoundsS = [];
+                 lastInitializedSequence = "";
+            }
+            draw(); 
+            updateButtonStates();
+            updateDisplays();
+            displayScoreboard(); // Display any potentially saved scoreboard data (e.g., from localStorage in future)
+        };
+    </script>
+</body>
+</html>
